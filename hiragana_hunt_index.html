@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#e9f7ef">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="ひらがなハント">
+<title>ひらがなハント</title>
+<style>
+:root{--ink:#263c35;--green:#327d60;--mint:#e9f7ef;--cream:#fffdf5;--pink:#ffe4e9;--gold:#f7c95c}
+*{box-sizing:border-box}
+body{margin:0;background:linear-gradient(160deg,#e9f7ef,#fff8e8);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN",Meiryo,sans-serif}
+main{max-width:620px;margin:auto;padding:18px 16px 36px}
+header{text-align:center;padding:8px 0 12px}
+h1{font-size:29px;margin:5px 0;color:#24694d;letter-spacing:.04em}
+.subtitle{font-size:13px;color:#5f766b}
+.panel{background:rgba(255,255,255,.88);border:1px solid #d7eadc;border-radius:22px;padding:16px;margin:12px 0;box-shadow:0 5px 16px rgba(40,80,55,.06)}
+.stats{display:flex;gap:10px}
+.stat{flex:1;text-align:center;background:#f4fbf5;border-radius:15px;padding:12px 6px}
+.stat strong{display:block;font-size:25px;color:var(--green)}
+.stat span{font-size:12px;color:#60746a}
+button{border:0;border-radius:14px;padding:13px 15px;font-size:16px;font-weight:700;cursor:pointer}
+.primary{background:var(--green);color:white;width:100%}
+.secondary{background:#edf6ef;color:#28694e}
+button:disabled{opacity:.45;cursor:not-allowed}
+video{display:block;width:100%;max-height:42vh;min-height:180px;object-fit:cover;background:#17251f;border-radius:16px}
+.camera-actions{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:10px}
+#status{font-size:13px;line-height:1.55;color:#52685d;margin:10px 0 0;white-space:pre-wrap}
+#found{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.found-char{font-size:25px;background:#fff0bc;border:1px solid #f1d575;border-radius:13px;min-width:48px;padding:7px;text-align:center}
+.book-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;margin-top:12px}
+.tile{aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;border-radius:10px;background:#f0f2ef;color:#b5beb8;font-size:20px;font-weight:700}
+.tile.got{background:#d9f2df;color:#236b4b;border:1px solid #a8d9b6}
+.section-title{font-size:18px;margin:0 0 8px}
+.note{font-size:12px;line-height:1.6;color:#68776f}
+#progressbar{height:9px;background:#e6eee8;border-radius:9px;overflow:hidden;margin-top:10px}
+#progress{height:100%;width:0;background:linear-gradient(90deg,#55b982,#f4c858);transition:width .3s}
+footer{text-align:center;color:#738078;font-size:11px;padding:10px}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <div style="font-size:34px">🔎 ✨ 📚</div>
+  <h1>ひらがなハント</h1>
+  <div class="subtitle">まちの中から、文字を見つけて集めよう！</div>
+</header>
+
+<section class="panel">
+  <div class="stats">
+    <div class="stat"><strong id="count">0</strong><span>集めた文字</span></div>
+    <div class="stat"><strong id="percent">0%</strong><span>図鑑の完成度</span></div>
+  </div>
+  <div id="progressbar"><div id="progress"></div></div>
+  <p class="note">看板・お菓子のパッケージ・本などをカメラで読み取ってみよう。安全な場所に立ち止まって遊んでね。</p>
+</section>
+
+<section class="panel">
+  <h2 class="section-title">📷 文字をさがす</h2>
+  <video id="video" autoplay playsinline muted></video>
+  <div class="camera-actions">
+    <button class="secondary" id="startBtn">カメラを起動</button>
+    <button class="primary" id="scanBtn" disabled>文字を読み取る</button>
+  </div>
+  <p id="status" role="status">「カメラを起動」を押して、カメラの使用を許可してください。</p>
+  <div id="found"></div>
+  <button class="primary hidden" id="collectBtn" style="margin-top:12px">選んだ文字をゲット！</button>
+</section>
+
+<section class="panel">
+  <h2 class="section-title">📖 ひらがな図鑑</h2>
+  <div class="note">緑色の文字はゲット済み。最初は基本の46文字を集めよう。</div>
+  <div class="book-grid" id="book"></div>
+  <button class="secondary" id="resetBtn" style="width:100%;margin-top:14px">図鑑をリセット</button>
+  <p class="note">※リセットすると、この端末に保存した収集記録が消えます。</p>
+</section>
+<footer>ひらがなハント 試作版 v0.1 · 文字認識には通信が必要です</footer>
+</main>
+<canvas id="canvas" class="hidden"></canvas>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<script>
+const chars = [..."あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわをん"];
+const video = document.getElementById('video');
+const canvas = document.getElementById('canvas');
+const statusEl = document.getElementById('status');
+const startBtn = document.getElementById('startBtn');
+const scanBtn = document.getElementById('scanBtn');
+const collectBtn = document.getElementById('collectBtn');
+const foundEl = document.getElementById('found');
+let stream = null;
+let candidates = [];
+let workerPromise = null;
+let saved = new Set();
+try { saved = new Set(JSON.parse(localStorage.getItem('hiragana-hunt-v1') || '[]')); } catch(e) {}
+
+function updateBook(){
+  document.getElementById('count').textContent = saved.size;
+  const pct = Math.round(saved.size / chars.length * 100);
+  document.getElementById('percent').textContent = pct + '%';
+  document.getElementById('progress').style.width = pct + '%';
+  const book = document.getElementById('book');
+  book.innerHTML = '';
+  chars.forEach(ch=>{
+    const tile = document.createElement('div');
+    tile.className = 'tile' + (saved.has(ch) ? ' got' : '');
+    tile.textContent = saved.has(ch) ? ch : '？';
+    tile.setAttribute('aria-label', saved.has(ch) ? ch+'は収集済み' : '未収集');
+    book.appendChild(tile);
+  });
+  try { localStorage.setItem('hiragana-hunt-v1', JSON.stringify([...saved])); } catch(e){}
+}
+function setStatus(msg){ statusEl.textContent = msg; }
+function normalizeKana(ch){
+  const code = ch.charCodeAt(0);
+  if(code >= 0x30A1 && code <= 0x30F6) return String.fromCharCode(code - 0x60);
+  return ch;
+}
+startBtn.addEventListener('click', async ()=>{
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    setStatus('このページではカメラを使えません。HTTPSのURLで開いているか確認してください。');
+    return;
+  }
+  try{
+    if(stream) stream.getTracks().forEach(t=>t.stop());
+    stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});
+    video.srcObject = stream;
+    await video.play();
+    scanBtn.disabled = false;
+    setStatus('カメラが起動しました。文字が大きく、明るく写るようにして「文字を読み取る」を押してください。');
+  }catch(e){
+    setStatus('カメラを起動できませんでした。Safariのカメラ使用許可を確認してください。');
+  }
+});
+scanBtn.addEventListener('click', async ()=>{
+  if(!video.videoWidth){setStatus('先にカメラを起動してください。');return;}
+  scanBtn.disabled = true;
+  collectBtn.classList.add('hidden');
+  foundEl.innerHTML = '';
+  candidates = [];
+  setStatus('画像を読み取っています。初回は日本語認識データの読み込みに時間がかかることがあります。');
+  try{
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video,0,0,canvas.width,canvas.height);
+    if(!workerPromise){
+      workerPromise = Tesseract.createWorker('jpn', 1, {
+        logger: m=>{
+          if(m.status === 'recognizing text'){
+            setStatus('文字を読み取り中… ' + Math.round((m.progress || 0)*100) + '%');
+          }else if(m.status){
+            setStatus('準備中：' + m.status);
+          }
+        }
+      });
+    }
+    const worker = await workerPromise;
+    const result = await worker.recognize(canvas);
+    const raw = result.data.text || '';
+    const found = [...raw].map(normalizeKana).filter(ch=>chars.includes(ch));
+    candidates = [...new Set(found)];
+    if(!candidates.length){
+      setStatus('ひらがなを見つけられませんでした。文字に近づき、明るい場所で、なるべく正面からもう一度試してください。');
+      return;
+    }
+    candidates.forEach(ch=>{
+      const b = document.createElement('button');
+      b.className = 'found-char';
+      b.textContent = ch;
+      b.type = 'button';
+      b.setAttribute('aria-pressed','true');
+      b.addEventListener('click',()=>{
+        const on = b.getAttribute('aria-pressed') === 'true';
+        b.setAttribute('aria-pressed', String(!on));
+        b.style.opacity = on ? '.35' : '1';
+        b.style.transform = on ? 'scale(.94)' : 'scale(1)';
+        b.dataset.selected = String(!on);
+      });
+      b.dataset.selected = 'true';
+      foundEl.appendChild(b);
+    });
+    setStatus('候補を見つけました！正しく読めている文字だけ残して「ゲット！」を押してください。読み取り結果：' + raw.trim().slice(0,160));
+    collectBtn.classList.remove('hidden');
+  }catch(e){
+    workerPromise = null;
+    setStatus('文字認識でエラーが起きました。通信状態を確認して、もう一度試してください。');
+  }finally{
+    scanBtn.disabled = false;
+  }
+});
+collectBtn.addEventListener('click', ()=>{
+  const selected = [...foundEl.querySelectorAll('button')].filter(b=>b.dataset.selected==='true').map(b=>b.textContent);
+  if(!selected.length){setStatus('ゲットする文字を1つ以上選んでください。');return;}
+  const newChars = selected.filter(ch=>!saved.has(ch));
+  selected.forEach(ch=>saved.add(ch));
+  updateBook();
+  if(saved.size === chars.length){
+    setStatus('すごい！ひらがな図鑑コンプリート！');
+  }else if(newChars.length){
+    setStatus('ゲット！新しい文字：' + newChars.join('、') + (selected.length>newChars.length ? '。重複した文字も確認しました。' : ''));
+  }else{
+    setStatus('この文字はもう図鑑にあるよ。別の文字も探してみよう！');
+  }
+  collectBtn.classList.add('hidden');
+});
+document.getElementById('resetBtn').addEventListener('click', ()=>{
+  if(confirm('集めた文字をすべて消してもいいですか？')){
+    saved.clear();
+    updateBook();
+    setStatus('図鑑をリセットしました。新しい冒険を始めよう！');
+  }
+});
+window.addEventListener('pagehide',()=>{if(stream)stream.getTracks().forEach(t=>t.stop());});
+updateBook();
+</script>
+</body>
+</html>
